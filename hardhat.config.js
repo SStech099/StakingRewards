@@ -12,12 +12,34 @@ module.exports = {
       gasPrice: 1000000000000
     },
   },
-  solidity: {
-    version: "0.6.12",
-    settings: {
-      optimizer: {
-        enabled: true
-      }
-     }
-    },
+  solidity:{
+    compilers: [{
+            version: "0.6.12",
+            settings: {
+                optimizer: {
+                    enabled: true,
+                    runs: 200,
+                },
+            },
+        },
+        {
+            version: "0.8.2",
+            settings: {
+                optimizer: {
+                    enabled: true,
+                    runs: 999999,
+                },
+            },
+        },
+        {
+            version: "0.8.7",
+            settings: {
+                optimizer: {
+                    enabled: true,
+                    runs: 200,
+                },
+            },
+        },
+    ],
+},
 };
