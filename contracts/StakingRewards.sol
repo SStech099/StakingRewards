@@ -738,6 +738,7 @@ contract StakingRewards is IStakingRewards, RewardsDistributionRecipient, Reentr
 
     uint256 private _totalSupply;
     // mapping(address => uint256) private _balances;
+    //TokenAddress => user => amount staked 
     mapping(address => mapping(address => uint)) private _balances;
 
     /* ========== CONSTRUCTOR ========== */
@@ -784,7 +785,12 @@ contract StakingRewards is IStakingRewards, RewardsDistributionRecipient, Reentr
     }
 
     function isWhitelisted(address _token) external view returns(bool) {
-        return whitelistedTokens[_token];
+        for(uint i, i < whitelistedTokens.length, i++) {
+            if(whitelistedTokens[i] = _token) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /* ========== MUTATIVE FUNCTIONS ========== */
