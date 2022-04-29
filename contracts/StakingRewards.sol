@@ -1,4 +1,8 @@
 /**
+ *Submitted for verification at Etherscan.io on 2022-02-15
+*/
+
+/**
  *Submitted for verification at Etherscan.io on 2021-04-28
 */
 
@@ -694,23 +698,23 @@ interface IStakingRewards {
 
     function rewardPerToken() external view returns (uint256);
 
-    function earned(address account) external view returns (uint256);
+    function earned(address _token, address account) external view returns (uint256);
 
     function getRewardForDuration() external view returns (uint256);
 
     function totalSupply() external view returns (uint256);
 
-    function balanceOf(address account) external view returns (uint256);
+    function balanceOf(address _token, address account) external view returns (uint256);
 
     // Mutative
 
-    function stake(uint256 amount) external;
+    function stake(address _tokenAddress, uint256 amount) external;
 
-    function withdraw(uint256 amount) external;
+    function withdraw(address _tokenAddress, uint256 amount) external;
 
-    function getReward() external;
+    function getReward(address _tokenAddress) external;
 
-    function exit() external;
+    function exit(address _token) external;
 }
 
 
@@ -721,7 +725,6 @@ contract StakingRewards is IStakingRewards, RewardsDistributionRecipient, Reentr
     /* ========== STATE VARIABLES ========== */
 
     IERC20 public rewardsToken;
-    IERC20 public stakingToken;
     uint256 public periodFinish = 0;
     uint256 public rewardRate = 0;
     uint256 public rewardsDuration = 30 days;
@@ -731,20 +734,20 @@ contract StakingRewards is IStakingRewards, RewardsDistributionRecipient, Reentr
 
     mapping(address => uint256) public userRewardPerTokenPaid;
     mapping(address => uint256) public rewards;
+    mapping(address => bool) public whitelistedTokens;
 
     uint256 private _totalSupply;
-    mapping(address => uint256) private _balances;
+    // mapping(address => uint256) private _balances;
+    mapping(address => mapping(address => uint)) private _balances;
 
     /* ========== CONSTRUCTOR ========== */
 
     constructor(
         address _owner,
         address _rewardsDistribution,
-        address _rewardsToken,
-        address _stakingToken
+        address _rewardsToken
     ) public Owned(_owner) {
         rewardsToken = IERC20(_rewardsToken);
-        stakingToken = IERC20(_stakingToken);
         rewardsDistribution = _rewardsDistribution;
     }
 
@@ -754,8 +757,8 @@ contract StakingRewards is IStakingRewards, RewardsDistributionRecipient, Reentr
         return _totalSupply;
     }
 
-    function balanceOf(address account) external view override returns (uint256) {
-        return _balances[account];
+    function balanceOf(address _token, address account) external view override returns (uint256) {
+        return _balances[_token][account];
     }
 
     function lastTimeRewardApplicable() public view override returns (uint256) {
@@ -772,12 +775,16 @@ contract StakingRewards is IStakingRewards, RewardsDistributionRecipient, Reentr
             );
     }
 
-    function earned(address account) public view override returns (uint256) {
-        return _balances[account].mul(rewardPerToken().sub(userRewardPerTokenPaid[account])).div(1e18).add(rewards[account]);
+    function earned(address _token, address account) public view override returns (uint256) {
+        return _balances[_token][account].mul(rewardPerToken().sub(userRewardPerTokenPaid[account])).div(1e18).add(rewards[account]);
     }
 
     function getRewardForDuration() external view override returns (uint256) {
         return rewardRate.mul(rewardsDuration);
+    }
+
+    function isWhitelisted(address _token) external view returns(bool) {
+        return whitelistedTokens[_token];
     }
 
     /* ========== MUTATIVE FUNCTIONS ========== */
@@ -787,22 +794,30 @@ contract StakingRewards is IStakingRewards, RewardsDistributionRecipient, Reentr
         walletAddress = _wallet;
     }
 
-    function stake(uint256 amount) external override nonReentrant notPaused updateReward(msg.sender) {
+    function whitelistToken(address _token) external {
+        whitelistedTokens[_token] = true;
+    }
+
+    function stake(address _tokenAddress, uint256 amount) external override nonReentrant notPaused  {
         require(amount > 0, "Cannot stake 0");
+        updateReward(_tokenAddress, msg.sender);
+        require(whitelistedTokens[_tokenAddress] = true, "Token is not Whitelisted");
         _totalSupply = _totalSupply.add(amount);
-        _balances[msg.sender] = _balances[msg.sender].add(amount);
-        stakingToken.safeTransferFrom(msg.sender, walletAddress, amount);
+        _balances[_tokenAddress][msg.sender] += amount;
+        IERC20(_tokenAddress).safeTransferFrom(msg.sender, walletAddress, amount);
         emit Staked(msg.sender, amount);
     }
 
-    function withdraw(uint256 amount) public override nonReentrant updateReward(msg.sender) {
+    function withdraw(address _tokenAddress, uint256 amount) public override nonReentrant {
         require(amount > 0, "Cannot withdraw 0");
+        updateReward(_tokenAddress, msg.sender);
         _totalSupply = _totalSupply.sub(amount);
-        _balances[msg.sender] = _balances[msg.sender].sub(amount);
+        _balances[_tokenAddress][msg.sender] -= amount;
         emit Withdrawn(msg.sender, amount);
     }
 
-    function getReward() public override nonReentrant updateReward(msg.sender) {
+    function getReward(address _tokenAddress) public override nonReentrant {
+        updateReward(_tokenAddress, msg.sender);
         uint256 reward = rewards[msg.sender];
         if (reward > 0) {
             rewards[msg.sender] = 0;
@@ -811,14 +826,15 @@ contract StakingRewards is IStakingRewards, RewardsDistributionRecipient, Reentr
         }
     }
 
-    function exit() external override {
-        withdraw(_balances[msg.sender]);
-        getReward();
+    function exit(address _token) public override {
+        withdraw(_token, _balances[_token][msg.sender]);
+        getReward(_token);
     }
 
     /* ========== RESTRICTED FUNCTIONS ========== */
 
-    function notifyRewardAmount(uint256 reward) external override onlyRewardsDistribution updateReward(address(0)) {
+    function notifyRewardAmount(uint256 reward) external override onlyRewardsDistribution {
+        updateReward(address(0), address(0));
         if (block.timestamp >= periodFinish) {
             rewardRate = reward.div(rewardsDuration);
         } else {
@@ -840,15 +856,20 @@ contract StakingRewards is IStakingRewards, RewardsDistributionRecipient, Reentr
     }
 
     // Added to support recovering LP Rewards from other systems to be distributed to holders
-    function recoverERC20(address tokenAddress, uint256 tokenAmount) external onlyOwner {
-        // Cannot recover the staking token or the rewards token
-        require(
-            tokenAddress != address(stakingToken) && tokenAddress != address(rewardsToken),
-            "Cannot withdraw the staking or rewards tokens"
-        );
-        IERC20(tokenAddress).safeTransfer(owner, tokenAmount);
-        emit Recovered(tokenAddress, tokenAmount);
-    }
+    // function recoverERC20(address tokenAddress, uint256 tokenAmount) external onlyOwner {
+    //     // Cannot recover the staking token or the rewards token
+    //     require(
+    //         tokenAddress != address(stakingToken) && tokenAddress != address(rewardsToken),
+    //         "Cannot withdraw the staking or rewards tokens"
+    //     );
+    //     require(
+    //         for(i = 0, i < whitelistedTokens.length, i++) {
+    //             whitelistedTokens[i]
+    //         }
+    //     )
+    //     IERC20(tokenAddress).safeTransfer(owner, tokenAmount);
+    //     emit Recovered(tokenAddress, tokenAmount);
+    // }
 
     function setRewardsDuration(uint256 _rewardsDuration) external onlyOwner {
         require(
@@ -861,14 +882,13 @@ contract StakingRewards is IStakingRewards, RewardsDistributionRecipient, Reentr
 
     /* ========== MODIFIERS ========== */
 
-    modifier updateReward(address account) {
+    function updateReward(address _token, address account) public {
         rewardPerTokenStored = rewardPerToken();
         lastUpdateTime = lastTimeRewardApplicable();
         if (account != address(0)) {
-            rewards[account] = earned(account);
+            rewards[account] = earned(_token, account);
             userRewardPerTokenPaid[account] = rewardPerTokenStored;
         }
-        _;
     }
 
     /* ========== EVENTS ========== */
