@@ -731,10 +731,10 @@ contract StakingRewards is IStakingRewards, RewardsDistributionRecipient, Reentr
     uint256 public lastUpdateTime;
     uint256 public rewardPerTokenStored;
     address public walletAddress;
+    address[] public whitelistedTokens;
 
     mapping(address => uint256) public userRewardPerTokenPaid;
     mapping(address => uint256) public rewards;
-    mapping(address => bool) public whitelistedTokens;
 
     uint256 private _totalSupply;
     // mapping(address => uint256) private _balances;
@@ -784,9 +784,9 @@ contract StakingRewards is IStakingRewards, RewardsDistributionRecipient, Reentr
         return rewardRate.mul(rewardsDuration);
     }
 
-    function isWhitelisted(address _token) external view returns(bool) {
-        for(uint i, i < whitelistedTokens.length, i++) {
-            if(whitelistedTokens[i] = _token) {
+    function isWhitelisted(address _token) public view returns(bool) {
+        for(uint i = 0; i < whitelistedTokens.length; i++) {
+            if(whitelistedTokens[i] == _token) {
                 return true;
             }
         }
@@ -800,14 +800,16 @@ contract StakingRewards is IStakingRewards, RewardsDistributionRecipient, Reentr
         walletAddress = _wallet;
     }
 
-    function whitelistToken(address _token) external {
-        whitelistedTokens[_token] = true;
-    }
+   function whitelistTokens(address[] calldata _tokens) public onlyOwner {
+    delete whitelistedTokens;
+    whitelistedTokens = _tokens;
+  }
 
     function stake(address _tokenAddress, uint256 amount) external override nonReentrant notPaused  {
         require(amount > 0, "Cannot stake 0");
         updateReward(_tokenAddress, msg.sender);
-        require(whitelistedTokens[_tokenAddress] = true, "Token is not Whitelisted");
+        // require(whitelistedTokens[_tokenAddress] = true, "Token is not Whitelisted");
+        require(isWhitelisted(_tokenAddress), "Token not whitelisted");
         _totalSupply = _totalSupply.add(amount);
         _balances[_tokenAddress][msg.sender] += amount;
         IERC20(_tokenAddress).safeTransferFrom(msg.sender, walletAddress, amount);
@@ -862,20 +864,18 @@ contract StakingRewards is IStakingRewards, RewardsDistributionRecipient, Reentr
     }
 
     // Added to support recovering LP Rewards from other systems to be distributed to holders
-    // function recoverERC20(address tokenAddress, uint256 tokenAmount) external onlyOwner {
-    //     // Cannot recover the staking token or the rewards token
-    //     require(
-    //         tokenAddress != address(stakingToken) && tokenAddress != address(rewardsToken),
-    //         "Cannot withdraw the staking or rewards tokens"
-    //     );
-    //     require(
-    //         for(i = 0, i < whitelistedTokens.length, i++) {
-    //             whitelistedTokens[i]
-    //         }
-    //     )
-    //     IERC20(tokenAddress).safeTransfer(owner, tokenAmount);
-    //     emit Recovered(tokenAddress, tokenAmount);
-    // }
+    function recoverERC20(address tokenAddress, uint256 tokenAmount) external onlyOwner {
+        // Cannot recover the staking token or the rewards token
+        require(tokenAddress != address(rewardsToken),"Cannot withdraw the staking or rewards tokens"
+        );
+        for(uint i = 0; i < whitelistedTokens.length; i++) {
+            if(whitelistedTokens[i] == tokenAddress) {
+                return;
+            }
+        }
+        IERC20(tokenAddress).safeTransfer(owner, tokenAmount);
+        emit Recovered(tokenAddress, tokenAmount);
+    }
 
     function setRewardsDuration(uint256 _rewardsDuration) external onlyOwner {
         require(
