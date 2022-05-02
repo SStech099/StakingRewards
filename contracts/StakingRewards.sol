@@ -808,7 +808,6 @@ contract StakingRewards is IStakingRewards, RewardsDistributionRecipient, Reentr
     function stake(address _tokenAddress, uint256 amount) external override nonReentrant notPaused  {
         require(amount > 0, "Cannot stake 0");
         updateReward(_tokenAddress, msg.sender);
-        // require(whitelistedTokens[_tokenAddress] = true, "Token is not Whitelisted");
         require(isWhitelisted(_tokenAddress), "Token not whitelisted");
         _totalSupply = _totalSupply.add(amount);
         _balances[_tokenAddress][msg.sender] += amount;
